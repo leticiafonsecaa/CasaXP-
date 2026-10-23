@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CasaXP: tarefas da casa viram XP</title>
+  <meta name="description" content="CasaXP transforma as tarefas da casa em pontos (XP) que podem ser trocados por recompensas." />
+  <style>
+    :root {
+      --primary: #4F46E5;
+      --primary-dark: #3730A3;
+      --bg: #F5F5FB;
+      --card: #FFFFFF;
+      --text: #1F2937;
+      --muted: #6B7280;
+      --accent: #059669;
+      color-scheme: light dark;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #111827;
+        --card: #1F2937;
+        --text: #F9FAFB;
+        --muted: #9CA3AF;
+      }
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+    header, section { padding: 48px 20px; }
+    .container { max-width: 880px; margin: 0 auto; }
+    .hero { text-align: center; padding-top: 72px; }
+    .logo { font-size: 14px; font-weight: 700; letter-spacing: 2px; color: var(--primary); text-transform: uppercase; }
+    h1 { font-size: clamp(32px, 6vw, 52px); line-height: 1.1; margin: 16px 0; }
+    h2 { font-size: 28px; margin-bottom: 16px; text-align: center; }
+    .lead { font-size: 18px; color: var(--muted); max-width: 620px; margin: 0 auto 32px; }
+    .btn {
+      display: inline-block;
+      padding: 16px 28px;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 17px;
+      text-decoration: none;
+      transition: transform 0.1s, background 0.2s;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: var(--primary-dark); }
+    .btn-disabled { background: #D1D5DB; color: #4B5563; cursor: not-allowed; pointer-events: none; }
+    .buttons { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .note { font-size: 14px; color: var(--muted); margin-top: 16px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+    .card { background: var(--card); border-radius: 14px; padding: 24px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+    .card h3 { font-size: 18px; margin-bottom: 8px; }
+    .card p { color: var(--muted); font-size: 15px; }
+    .step-num {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 36px; height: 36px; border-radius: 50%;
+      background: var(--primary); color: #fff; font-weight: 700; margin-bottom: 12px;
+    }
+    .rules { background: var(--card); border-radius: 14px; padding: 28px; }
+    .rules p { margin-bottom: 12px; }
+    .rules strong { color: var(--accent); }
+    footer { text-align: center; color: var(--muted); font-size: 14px; padding: 32px 20px; }
+  </style>
+</head>
+<body>
+
+  <header class="hero">
+    <div class="container">
+      <div class="logo">CasaXP</div>
+      <h1>Tarefas da casa viram XP.<br />XP vira recompensa.</h1>
+      <p class="lead">
+        Um jeito simples de dividir as tarefas de casa: o responsável cria as tarefas,
+        o adolescente faz, e cada tarefa aprovada soma pontos para trocar por recompensas.
+      </p>
+
+      <div class="buttons">
+        <a class="btn btn-primary" href="downloads/casaxp.apk" download>Baixar para Android</a>
+        <span class="btn btn-disabled" aria-disabled="true">iPhone em breve</span>
+      </div>
+      <p class="note">Abra esta página no celular Android e toque em “Baixar”. Pode ser necessário permitir a instalação de apps de fontes desconhecidas.</p>
+    </div>
+  </header>
+
+  <section>
+    <div class="container">
+      <h2>Como funciona</h2>
+      <div class="grid">
+        <div class="card">
+          <div class="step-num">1</div>
+          <h3>Crie a sua casa</h3>
+          <p>O responsável cria a casa e recebe um código de convite.</p>
+        </div>
+        <div class="card">
+          <div class="step-num">2</div>
+          <h3>Adolescente entra</h3>
+          <p>Cada adolescente cria a conta usando o código e vê as próprias tarefas.</p>
+        </div>
+        <div class="card">
+          <div class="step-num">3</div>
+          <h3>Faça e aprove</h3>
+          <p>Ao concluir, a tarefa vai para aprovação. Quando aprovada, o XP é creditado.</p>
+        </div>
+        <div class="card">
+          <div class="step-num">4</div>
+          <h3>Troque por recompensas</h3>
+          <p>Com XP suficiente, o adolescente resgata a recompensa escolhida pela família.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="container">
+      <h2>Regras simples</h2>
+      <div class="rules">
+        <p><strong>Responsável</strong> cria tarefas e recompensas, aprova ou recusa as tarefas concluídas.</p>
+        <p><strong>Adolescente</strong> marca as próprias tarefas como feitas e resgata recompensas quando tiver XP suficiente.</p>
+        <p><strong>XP</strong> só é creditado depois da aprovação. Tarefa recusada volta a ficar pendente, sem pontos.</p>
+        <p><strong>Resgate</strong> desconta o XP do saldo na hora. Não é possível resgatar sem saldo.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <p>CasaXP &middot; Feito para famílias</p>
+  </footer>
+
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "expo": {
+    "name": "CasaXP",
+    "slug": "casaxp",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "android": {
+      "package": "com.casaxp.app",
+      "versionCode": 1,
+      "adaptiveIcon": { "backgroundColor": "#4F46E5" }
+    },
+    "extra": {
+      "apiUrl": "http://10.84.146.102:3000"
+    }
+  }
+}
