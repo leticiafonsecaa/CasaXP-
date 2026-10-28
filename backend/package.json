@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
-    "test": "node --import tsx --test test/*.test.ts"
+    "test": "node --import tsx --test test/*.test.ts",
+    "seed": "tsx src/seed.ts"
   },
   "engines": {
     "node": ">=22.13"
