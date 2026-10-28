@@ -7,8 +7,11 @@
     "start": "tsx src/server.ts",
     "test": "node --import tsx --test test/*.test.ts"
   },
-  "engines": { "node": ">=22.13" },
+  "engines": {
+    "node": ">=22.13"
+  },
   "dependencies": {
+    "@libsql/client": "^0.18.0",
     "express": "^4.21.2"
   },
   "devDependencies": {

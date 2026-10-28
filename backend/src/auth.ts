@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
-import { db } from './db';
+import { get, run } from './db';
 import type { Role } from './rules';
 
 export interface AuthUser {
@@ -34,31 +34,34 @@ export function verifyPassword(password: string, stored: string): boolean {
   return crypto.timingSafeEqual(actual, expected);
 }
 
-export function createSession(userId: number): string {
+export async function createSession(userId: number): Promise<string> {
   const token = crypto.randomBytes(32).toString('hex');
-  db.prepare('INSERT INTO sessions (token, user_id) VALUES (?, ?)').run(token, userId);
+  await run('INSERT INTO sessions (token, user_id) VALUES (?, ?)', [token, userId]);
   return token;
 }
 
 /** Descobre o usuário pelo token. Nunca confia em IDs enviados pelo cliente. */
-export function requireAuth(req: Request, res: Response, next: NextFunction): void {
-  const header = req.headers.authorization ?? '';
-  const token = header.startsWith('Bearer ') ? header.slice(7) : '';
-  if (!token) {
-    res.status(401).json({ error: 'Não autenticado' });
-    return;
-  }
-  const row = db
-    .prepare(
+export async function requireAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const header = req.headers.authorization ?? '';
+    const token = header.startsWith('Bearer ') ? header.slice(7) : '';
+    if (!token) {
+      res.status(401).json({ error: 'Não autenticado' });
+      return;
+    }
+    const row = await get<AuthUser>(
       `SELECT u.id, u.household_id AS householdId, u.name, u.email, u.role, u.xp
          FROM sessions s JOIN users u ON u.id = s.user_id
         WHERE s.token = ?`,
-    )
-    .get(token) as unknown as AuthUser | undefined;
-  if (!row) {
-    res.status(401).json({ error: 'Sessão inválida. Entre novamente.' });
-    return;
+      [token],
+    );
+    if (!row) {
+      res.status(401).json({ error: 'Sessão inválida. Entre novamente.' });
+      return;
+    }
+    req.user = row;
+    next();
+  } catch (err) {
+    next(err);
   }
-  req.user = row;
-  next();
 }

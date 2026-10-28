@@ -1,0 +1,18 @@
+diff --git a/backend/test/api.test.ts b/backend/test/api.test.ts
+index a26cb05..2f81255 100644
+--- a/backend/test/api.test.ts
++++ b/backend/test/api.test.ts
+@@ -28,7 +28,12 @@ after(async () => {
+   server.close();
+   const { db } = await import('../src/db');
+   db.close();
+-  fs.rmSync(arquivoTeste, { force: true });
++  // No Windows o arquivo pode continuar aberto por um instante; se não puder apagar, não falha o teste.
++  try {
++    fs.rmSync(arquivoTeste, { force: true });
++  } catch {
++    // o arquivo temporário fica na pasta Temp e pode ser apagado depois
++  }
+ });
+ 
+ async function call(method: string, path: string, body?: unknown, token?: string) {

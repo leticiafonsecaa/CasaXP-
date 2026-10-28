@@ -1,15 +1,22 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Server } from 'node:http';
+import os from 'node:os';
+import path from 'node:path';
+import fs from 'node:fs';
 import { dataHojeBrasil } from '../src/rules';
-// Banco temporário em memória: os testes não mexem no banco real.
-process.env.DB_PATH = ':memory:';
+// Banco temporário: os testes não mexem no banco real.
+const arquivoTeste = path.join(os.tmpdir(), `casaxp-teste-${process.pid}-${Date.now()}.db`);
+process.env.DB_PATH = arquivoTeste;
+process.env.TURSO_URL = '';
 
 let server: Server;
 let base: string;
 
 before(async () => {
   // Importa só agora, depois de definir DB_PATH.
+  const { iniciarBanco } = await import('../src/db');
+  await iniciarBanco();
   const { createApp } = await import('../src/app');
   server = createApp().listen(0);
   await new Promise((r) => server.once('listening', r));
@@ -17,7 +24,17 @@ before(async () => {
   base = `http://127.0.0.1:${port}/api`;
 });
 
-after(() => server.close());
+after(async () => {
+  server.close();
+  const { db } = await import('../src/db');
+  db.close();
+  // No Windows o arquivo pode continuar aberto por um instante; se não puder apagar, não falha o teste.
+  try {
+    fs.rmSync(arquivoTeste, { force: true });
+  } catch {
+    // o arquivo temporário fica na pasta Temp e pode ser apagado depois
+  }
+});
 
 async function call(method: string, path: string, body?: unknown, token?: string) {
   const res = await fetch(base + path, {
@@ -167,7 +184,7 @@ test('código de convite: aparece só para o administrador', async () => {
 });
 
 test('tarefa aprovada some no dia seguinte; pendente e concluída continuam aparecendo', async () => {
-  const { db } = await import('../src/db');
+  const { run } = await import('../src/db');
   const admin = await call('POST', '/auth/signup', {
     name: 'Mãe', email: 'mae5@teste.com', password: 'senha123', role: 'RESPONSAVEL',
   });
@@ -195,7 +212,7 @@ test('tarefa aprovada some no dia seguinte; pendente e concluída continuam apar
 
   // Simula o dia seguinte.
   assert.match(dataHojeBrasil(), /^\d{4}-\d{2}-\d{2}$/);
-  db.prepare('UPDATE tasks SET approved_on = ? WHERE id = ?').run('2000-01-01', aprovada.data.id);
+  await run('UPDATE tasks SET approved_on = ? WHERE id = ?', ['2000-01-01', aprovada.data.id]);
 
   const usuarioVe = await titulos(fToken);
   const adminVe = await titulos(token);

@@ -1,15 +1,61 @@
-import { DatabaseSync } from 'node:sqlite';
-import path from 'node:path';
 import fs from 'node:fs';
+import path from 'node:path';
+import { createClient, type InStatement } from '@libsql/client';
 
-// Em produção, DB_PATH aponta para um disco persistente.
-// Nos testes, DB_PATH=':memory:'.
-const dbPath = process.env.DB_PATH ?? path.resolve(__dirname, '../data/casaxp.db');
-if (dbPath !== ':memory:') fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+// Em produção: TURSO_URL e TURSO_AUTH_TOKEN apontam para o banco no Turso.
+// Sem essas variáveis, usa um arquivo local (DB_PATH ou backend/data/casaxp.db).
+function configurarConexao(): { url: string; authToken?: string } {
+  if (process.env.TURSO_URL) {
+    return { url: process.env.TURSO_URL, authToken: process.env.TURSO_AUTH_TOKEN };
+  }
+  const arquivo = process.env.DB_PATH ?? path.resolve(__dirname, '../data/casaxp.db');
+  fs.mkdirSync(path.dirname(arquivo), { recursive: true });
+  return { url: 'file:' + arquivo.replace(/\\/g, '/') };
+}
 
-export const db = new DatabaseSync(dbPath);
+export const db = createClient(configurarConexao());
 
-db.exec(`
+/** Transforma o resultado do banco em objetos simples, com o nome das colunas. */
+function linhasComoObjetos(resultado: { columns: string[]; rows: any[] }): any[] {
+  return resultado.rows.map((linha) =>
+    Object.fromEntries(resultado.columns.map((coluna, i) => [coluna, linha[i]])),
+  );
+}
+
+type Args = any[];
+
+/** Lista de linhas de uma consulta. */
+export async function all<T = any>(sql: string, args: Args = []): Promise<T[]> {
+  const resultado = await db.execute({ sql, args });
+  return linhasComoObjetos(resultado) as T[];
+}
+
+/** Primeira linha de uma consulta (ou undefined). */
+export async function get<T = any>(sql: string, args: Args = []): Promise<T | undefined> {
+  return (await all<T>(sql, args))[0];
+}
+
+/** Executa uma alteração (INSERT, UPDATE, DELETE). */
+export async function run(sql: string, args: Args = []): Promise<{ lastInsertRowid: number }> {
+  const resultado = await db.execute({ sql, args });
+  return { lastInsertRowid: Number(resultado.lastInsertRowid ?? 0) };
+}
+
+/** Executa várias alterações como uma só: ou todas são aplicadas, ou nenhuma. */
+export async function atomic(instrucoes: InStatement[]): Promise<void> {
+  await db.batch(instrucoes, 'write');
+}
+
+async function garantirColuna(tabela: string, coluna: string, tipo: string): Promise<void> {
+  const colunas = await all<{ name: string }>(`PRAGMA table_info(${tabela})`);
+  if (!colunas.some((c) => c.name === coluna)) {
+    await db.execute(`ALTER TABLE ${tabela} ADD COLUMN ${coluna} ${tipo}`);
+  }
+}
+
+/** Cria as tabelas e acrescenta colunas novas em bancos antigos, sem apagar dados. */
+export async function iniciarBanco(): Promise<void> {
+  await db.executeMultiple(`
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS households (
@@ -58,6 +104,7 @@ CREATE TABLE IF NOT EXISTS redemptions (
   user_id    INTEGER NOT NULL REFERENCES users(id),
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
 CREATE TABLE IF NOT EXISTS activities (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   household_id INTEGER NOT NULL REFERENCES households(id),
@@ -71,31 +118,7 @@ CREATE TABLE IF NOT EXISTS activities (
 );
 `);
 
-// Bancos criados antes desta versão não têm a coluna "description": adiciona sem apagar dados.
-const colunasTarefas = db.prepare('PRAGMA table_info(tasks)').all() as unknown as { name: string }[];
-if (!colunasTarefas.some((c) => c.name === 'description')) {
-  db.exec('ALTER TABLE tasks ADD COLUMN description TEXT');
-}
-
-const colunasAtividades = db.prepare('PRAGMA table_info(activities)').all() as unknown as { name: string }[];
-if (!colunasAtividades.some((c) => c.name === 'description')) {
-  db.exec('ALTER TABLE activities ADD COLUMN description TEXT');
-}
-
-const colunasTarefas2 = db.prepare('PRAGMA table_info(tasks)').all() as unknown as { name: string }[];
-if (!colunasTarefas2.some((c) => c.name === 'approved_on')) {
-  db.exec('ALTER TABLE tasks ADD COLUMN approved_on TEXT');
-}
-
-/** Executa uma função dentro de uma transação (node:sqlite é síncrono). */
-export function tx<T>(fn: () => T): T {
-  db.exec('BEGIN');
-  try {
-    const result = fn();
-    db.exec('COMMIT');
-    return result;
-  } catch (err) {
-    db.exec('ROLLBACK');
-    throw err;
-  }
+  await garantirColuna('tasks', 'description', 'TEXT');
+  await garantirColuna('tasks', 'approved_on', 'TEXT');
+  await garantirColuna('activities', 'description', 'TEXT');
 }

@@ -1,4 +1,4 @@
-import { db } from './db';
+import { all, atomic } from './db';
 
 export type ActivityKind = 'TAREFA_CONCLUIDA' | 'RECOMPENSA_RESGATADA' | 'NOVA_TAREFA';
 
@@ -13,19 +13,21 @@ interface Evento {
 }
 
 /** Grava um aviso para cada destinatário. Chamado pelas rotas de tarefas e recompensas. */
-export function registrarAtividade(e: Evento): void {
-  const stmt = db.prepare(
-    'INSERT INTO activities (household_id, recipient_id, actor_id, kind, title, amount, description) VALUES (?, ?, ?, ?, ?, ?, ?)',
+export async function registrarAtividade(e: Evento): Promise<void> {
+  if (e.recipientIds.length === 0) return;
+  await atomic(
+    e.recipientIds.map((recipientId) => ({
+      sql: 'INSERT INTO activities (household_id, recipient_id, actor_id, kind, title, amount, description) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      args: [e.householdId, recipientId, e.actorId, e.kind, e.title, e.amount, e.description ?? null],
+    })),
   );
-  for (const recipientId of e.recipientIds) {
-    stmt.run(e.householdId, recipientId, e.actorId, e.kind, e.title, e.amount, e.description ?? null);
-  }
 }
 
 /** Ids de todos os administradores da casa. */
-export function administradoresDaCasa(householdId: number): number[] {
-  const rows = db
-    .prepare("SELECT id FROM users WHERE household_id = ? AND role = 'RESPONSAVEL'")
-    .all(householdId) as unknown as { id: number }[];
-  return rows.map((r) => r.id);
+export async function administradoresDaCasa(householdId: number): Promise<number[]> {
+  const rows = await all<{ id: number }>(
+    "SELECT id FROM users WHERE household_id = ? AND role = 'RESPONSAVEL'",
+    [householdId],
+  );
+  return rows.map((r) => Number(r.id));
 }

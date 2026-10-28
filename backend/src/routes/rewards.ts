@@ -1,19 +1,21 @@
 import { Router } from 'express';
-import { db, tx } from '../db';
 import { administradoresDaCasa, registrarAtividade } from '../activities';
+import { all, atomic, get, run } from '../db';
+import { ah } from '../http';
 import { canManage, canRedeem, validateCost } from '../rules';
 
 export const rewardsRouter = Router();
 
-rewardsRouter.get('/', (req, res) => {
-  const rows = db
-    .prepare('SELECT id, title, cost FROM rewards WHERE household_id = ? ORDER BY cost')
-    .all(req.user!.householdId);
+rewardsRouter.get('/', ah(async (req, res) => {
+  const rows = await all(
+    'SELECT id, title, cost FROM rewards WHERE household_id = ? ORDER BY cost',
+    [req.user!.householdId],
+  );
   res.json({ rewards: rows });
-});
+}));
 
 /** Só o administrador cria recompensas. */
-rewardsRouter.post('/', (req, res) => {
+rewardsRouter.post('/', ah(async (req, res) => {
   const user = req.user!;
   if (!canManage(user.role)) return res.status(403).json({ error: 'Apenas o administrador cria recompensas' });
 
@@ -24,61 +26,60 @@ rewardsRouter.post('/', (req, res) => {
   const costErr = validateCost(cost);
   if (costErr) return res.status(400).json({ error: costErr });
 
-  const info = db
-    .prepare('INSERT INTO rewards (household_id, title, cost) VALUES (?, ?, ?)')
-    .run(user.householdId, title.trim(), cost);
-  res.status(201).json({ id: Number(info.lastInsertRowid) });
-});
+  const info = await run(
+    'INSERT INTO rewards (household_id, title, cost) VALUES (?, ?, ?)',
+    [user.householdId, title.trim(), cost],
+  );
+  res.status(201).json({ id: info.lastInsertRowid });
+}));
 
-/** O usuário resgata: debita o XP e registra o resgate, numa transação. */
-rewardsRouter.post('/:id/redeem', (req, res) => {
+/** O usuário resgata: debita o XP e registra o resgate, na mesma operação. */
+rewardsRouter.post('/:id/redeem', ah(async (req, res) => {
   const user = req.user!;
-  const reward = db
-    .prepare('SELECT id, title, cost FROM rewards WHERE id = ? AND household_id = ?')
-    .get(Number(req.params.id), user.householdId) as { id: number; title: string; cost: number } | undefined;
+  const reward = await get<{ id: number; title: string; cost: number }>(
+    'SELECT id, title, cost FROM rewards WHERE id = ? AND household_id = ?',
+    [Number(req.params.id), user.householdId],
+  );
   if (!reward) return res.status(404).json({ error: 'Recompensa não encontrada' });
 
   // Lê o saldo do banco (não do token), para não usar saldo desatualizado.
-  const current = db.prepare('SELECT xp FROM users WHERE id = ?').get(user.id) as { xp: number };
-  if (!canRedeem(user.role, current.xp, reward.cost)) {
+  const current = await get<{ xp: number }>('SELECT xp FROM users WHERE id = ?', [user.id]);
+  if (!canRedeem(user.role, Number(current!.xp), Number(reward.cost))) {
     return res.status(400).json({ error: 'XP insuficiente para este resgate' });
   }
 
-  const newBalance = tx(() => {
-    db.prepare('UPDATE users SET xp = xp - ? WHERE id = ?').run(reward.cost, user.id);
-    db.prepare('INSERT INTO redemptions (reward_id, user_id) VALUES (?, ?)').run(reward.id, user.id);
-    return current.xp - reward.cost;
-  });
+  await atomic([
+    { sql: 'UPDATE users SET xp = xp - ? WHERE id = ?', args: [reward.cost, user.id] },
+    { sql: 'INSERT INTO redemptions (reward_id, user_id) VALUES (?, ?)', args: [reward.id, user.id] },
+  ]);
 
   // Avisa todos os administradores da casa.
-  registrarAtividade({
+  await registrarAtividade({
     householdId: user.householdId,
-    recipientIds: administradoresDaCasa(user.householdId),
+    recipientIds: await administradoresDaCasa(user.householdId),
     actorId: user.id,
     kind: 'RECOMPENSA_RESGATADA',
     title: reward.title,
-    amount: reward.cost,
+    amount: Number(reward.cost),
   });
-  res.json({ ok: true, xp: newBalance });
-});
+  res.json({ ok: true, xp: Number(current!.xp) - Number(reward.cost) });
+}));
 
 /**
  * Só o administrador exclui recompensas da própria casa.
  * Os resgates antigos dela também são removidos. O XP já gasto não é devolvido.
  */
-rewardsRouter.delete('/:id', (req, res) => {
+rewardsRouter.delete('/:id', ah(async (req, res) => {
   const user = req.user!;
   if (!canManage(user.role)) return res.status(403).json({ error: 'Apenas o administrador exclui recompensas' });
 
   const id = Number(req.params.id);
-  const reward = db
-    .prepare('SELECT id FROM rewards WHERE id = ? AND household_id = ?')
-    .get(id, user.householdId);
+  const reward = await get('SELECT id FROM rewards WHERE id = ? AND household_id = ?', [id, user.householdId]);
   if (!reward) return res.status(404).json({ error: 'Recompensa não encontrada' });
 
-  tx(() => {
-    db.prepare('DELETE FROM redemptions WHERE reward_id = ?').run(id);
-    db.prepare('DELETE FROM rewards WHERE id = ?').run(id);
-  });
+  await atomic([
+    { sql: 'DELETE FROM redemptions WHERE reward_id = ?', args: [id] },
+    { sql: 'DELETE FROM rewards WHERE id = ?', args: [id] },
+  ]);
   res.json({ ok: true });
-});
+}));

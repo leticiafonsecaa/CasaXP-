@@ -2,11 +2,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import express from 'express';
 import { requireAuth } from './auth';
+import { activitiesRouter } from './routes/activities';
 import { authRouter } from './routes/auth';
 import { householdRouter } from './routes/household';
-import { tasksRouter } from './routes/tasks';
 import { rewardsRouter } from './routes/rewards';
-import { activitiesRouter } from './routes/activities';
+import { tasksRouter } from './routes/tasks';
 
 // Pasta com o app web já compilado (criada pelo comando "npm run build" dentro de web/).
 const webDist = path.resolve(__dirname, '../../web/dist');
@@ -27,6 +27,12 @@ export function createApp() {
     app.use(express.static(webDist));
     app.get(/^(?!\/api).*/, (_req, res) => res.sendFile(path.join(webDist, 'index.html')));
   }
+
+  // Erros inesperados (por exemplo, falha de conexão com o banco) viram uma resposta de erro.
+  app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    console.error(err);
+    res.status(500).json({ error: 'Erro interno. Tente de novo.' });
+  });
 
   return app;
 }
