@@ -20,6 +20,13 @@ export class ApiError extends Error {
 
 export async function api<T = any>(method: string, path: string, body?: unknown): Promise<T> {
   const token = getToken();
+  if (import.meta.env.VITE_DEMO === 'true') {
+    // Versão de demonstração: sem servidor, tudo fica neste navegador.
+    const { demoRequest } = await import('./demo/demoApi');
+    const r = await demoRequest(method, path, body, token);
+    if (r.status >= 400) throw new ApiError(r.data.error ?? 'Algo deu errado', r.status);
+    return r.data as T;
+  }
   const res = await fetch(`/api${path}`, {
     method,
     headers: {
