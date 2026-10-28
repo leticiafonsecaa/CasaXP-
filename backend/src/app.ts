@@ -3,6 +3,7 @@ import path from 'node:path';
 import express from 'express';
 import { requireAuth } from './auth';
 import { activitiesRouter } from './routes/activities';
+import { demoRouter } from './routes/demo';
 import { authRouter } from './routes/auth';
 import { householdRouter } from './routes/household';
 import { rewardsRouter } from './routes/rewards';
@@ -16,6 +17,9 @@ export function createApp() {
   app.use(express.json());
 
   app.get('/api/health', (_req, res) => res.json({ ok: true }));
+  // Diz ao app se os botões de acesso rápido devem aparecer.
+  app.get('/api/config', (_req, res) => res.json({ demo: process.env.DEMO_MODE === 'true' }));
+  app.use('/api/demo', demoRouter);
   app.use('/api/auth', authRouter);
   app.use('/api/household', requireAuth, householdRouter);
   app.use('/api/tasks', requireAuth, tasksRouter);

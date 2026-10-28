@@ -304,3 +304,22 @@ test('administrador exclui recompensa; usuário não exclui; resgates antigos so
   const eu = (await call('GET', '/auth/me', undefined, fToken)).data.user;
   assert.equal(eu.xp, 20);
 });
+
+test('acesso rápido de demonstração só funciona com DEMO_MODE ligado', async () => {
+  await call('POST', '/auth/signup', {
+    name: 'Admin Demo', email: 'admin@demo.casaxp', password: 'demo1234', role: 'RESPONSAVEL',
+  });
+
+  delete process.env.DEMO_MODE;
+  assert.equal((await call('POST', '/demo/login', { papel: 'admin' })).status, 404);
+
+  process.env.DEMO_MODE = 'true';
+  const ok = await call('POST', '/demo/login', { papel: 'admin' });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.data.user.role, 'RESPONSAVEL');
+  assert.equal((await call('POST', '/demo/login', { papel: 'inválido' })).status, 400);
+  assert.equal((await call('GET', '/config')).data.demo, true);
+
+  delete process.env.DEMO_MODE;
+  assert.equal((await call('GET', '/config')).data.demo, false);
+});

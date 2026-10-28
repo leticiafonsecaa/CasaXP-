@@ -84,6 +84,13 @@ export default function App() {
 
 function AuthScreen({ onEntrar }: { onEntrar: (u: User) => void }) {
   const [modo, setModo] = useState<'entrar' | 'criar'>('entrar');
+  const [modoDemo, setModoDemo] = useState(false);
+
+  useEffect(() => {
+    api<{ demo: boolean }>('GET', '/config')
+      .then((r) => setModoDemo(r.demo))
+      .catch(() => setModoDemo(false));
+  }, []);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -91,6 +98,17 @@ function AuthScreen({ onEntrar }: { onEntrar: (u: User) => void }) {
   const [inviteCode, setInviteCode] = useState('');
   const [erro, setErro] = useState('');
   const [enviando, setEnviando] = useState(false);
+
+  async function entrarDemo(papel: 'admin' | 'usuario') {
+    setErro('');
+    try {
+      const r = await api<{ token: string; user: User }>('POST', '/demo/login', { papel });
+      setToken(r.token);
+      onEntrar(r.user);
+    } catch (err) {
+      setErro(err instanceof ApiError ? err.message : 'Não foi possível entrar. Tente de novo.');
+    }
+  }
 
   async function enviar(e: FormEvent) {
     e.preventDefault();
@@ -121,6 +139,16 @@ function AuthScreen({ onEntrar }: { onEntrar: (u: User) => void }) {
         <button className={modo === 'entrar' ? 'ativa' : ''} onClick={() => setModo('entrar')}>Entrar</button>
         <button className={modo === 'criar' ? 'ativa' : ''} onClick={() => setModo('criar')}>Criar conta</button>
       </div>
+
+      {modoDemo && (
+        <div className="card acesso-rapido">
+          <h3>Acesso rápido (demonstração)</h3>
+          <div className="linha">
+            <button className="secundario" onClick={() => entrarDemo('admin')}>Administrador</button>
+            <button className="secundario" onClick={() => entrarDemo('usuario')}>Usuário</button>
+          </div>
+        </div>
+      )}
 
       <form onSubmit={enviar} className="card">
         {modo === 'criar' && (

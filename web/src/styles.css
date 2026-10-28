@@ -338,3 +338,7 @@ img.avatar { background: #fff; padding: 3px; border-radius: 12px; object-fit: co
 .membro-acoes { display: flex; align-items: center; gap: 10px; }
 .perigo { background: #fee2e2; color: #b91c1c; font-weight: 600; }
 .perigo:hover:not(:disabled) { background: #fecaca; }
+
+/* Acesso rápido de demonstração */
+.acesso-rapido .linha { margin-top: 0; }
+.acesso-rapido button { flex: 1; }
