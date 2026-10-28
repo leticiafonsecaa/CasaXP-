@@ -1,0 +1,340 @@
+:root {
+  --primaria: #2563eb;
+  --primaria-escura: #1d4ed8;
+  --primaria-clara: #dbeafe;
+  --destaque: #0ea5e9;
+  --fundo: #f1f6fd;
+  --cartao: #ffffff;
+  --texto: #0f172a;
+  --secundario: #64748b;
+  --borda: #e2e8f0;
+  --erro: #dc2626;
+  --sucesso: #16a34a;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  margin: 0;
+  min-height: 100%;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  background: var(--fundo);
+  color: var(--texto);
+  -webkit-font-smoothing: antialiased;
+}
+
+body { padding-bottom: env(safe-area-inset-bottom, 0px); }
+
+h1, h2, h3 { margin: 0 0 10px; letter-spacing: -0.01em; }
+h2 { font-size: 22px; margin: 4px 0 14px; }
+h3 { font-size: 16px; }
+
+.centro, .vazio { text-align: center; color: var(--secundario); padding: 32px 0; }
+.sub, .detalhe, small { color: var(--secundario); font-size: 13px; }
+small { display: block; margin-top: 4px; }
+
+/* Tela de entrada */
+.auth { max-width: 420px; margin: 0 auto; padding: 48px 20px; }
+.auth h1 { font-size: 36px; color: var(--primaria); font-weight: 800; }
+.auth .sub { font-size: 15px; margin-bottom: 20px; }
+
+.abas { display: flex; gap: 6px; background: #e2e8f0; padding: 4px; border-radius: 14px; margin: 16px 0; }
+.abas button { flex: 1; background: transparent; color: var(--secundario); }
+.abas button.ativa { background: #fff; color: var(--primaria); box-shadow: 0 1px 4px rgba(15, 23, 42, 0.12); }
+
+/* Cartões e formulários */
+.card {
+  background: var(--cartao);
+  border-radius: 16px;
+  padding: 18px;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 12px rgba(15, 23, 42, 0.04);
+  border: 1px solid var(--borda);
+}
+form.card label { display: block; margin-bottom: 14px; font-size: 14px; font-weight: 600; color: #334155; }
+input, select {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 12px;
+  font-size: 16px;
+  font-weight: 400;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  background: #fff;
+  color: var(--texto);
+}
+input:focus, select:focus { outline: none; border-color: var(--primaria); box-shadow: 0 0 0 3px var(--primaria-clara); }
+
+button {
+  font: inherit;
+  padding: 11px 16px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.05s;
+}
+button:active:not(:disabled) { transform: scale(0.98); }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.primario { background: var(--primaria); color: #fff; width: 100%; font-weight: 600; }
+.primario:hover:not(:disabled) { background: var(--primaria-escura); }
+.secundario { background: #e2e8f0; color: var(--texto); font-weight: 600; }
+.pequeno { width: auto; padding: 9px 14px; font-size: 14px; white-space: nowrap; }
+.link { background: none; color: var(--primaria); padding: 4px; }
+
+.erro { color: var(--erro); font-size: 14px; }
+.sucesso { color: var(--sucesso); font-weight: 600; }
+
+/* Cabeçalho e layout logado */
+.app { min-height: 100vh; display: flex; flex-direction: column; }
+header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: calc(14px + env(safe-area-inset-top, 0px)) 18px 14px;
+  background: linear-gradient(135deg, #2563eb 0%, #0ea5e9 100%);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.25);
+}
+.marca { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.avatar {
+  width: 42px; height: 42px; flex: 0 0 42px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.22);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 18px;
+}
+.saudacao { font-weight: 700; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.papel { font-size: 13px; opacity: 0.85; }
+.xp {
+  background: #fff;
+  color: var(--primaria);
+  padding: 7px 12px;
+  border-radius: 999px;
+  font-weight: 800;
+  font-size: 15px;
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.15);
+}
+.sair {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  padding: 7px 12px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.banner {
+  width: calc(100% - 24px);
+  margin: 12px 12px 0;
+  background: #fff;
+  color: var(--primaria-escura);
+  border: 1px solid #bfdbfe;
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.18);
+  font-weight: 600;
+  text-align: left;
+  animation: entrar 0.25s ease-out;
+}
+@keyframes entrar { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+
+main {
+  flex: 1;
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 16px 16px 110px;
+}
+
+/* Navegação inferior */
+nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-around;
+  gap: 4px;
+  padding: 8px 6px calc(8px + env(safe-area-inset-bottom, 0px));
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(8px);
+  border-top: 1px solid var(--borda);
+  box-shadow: 0 -4px 14px rgba(15, 23, 42, 0.05);
+}
+nav button {
+  position: relative;
+  flex: 1;
+  max-width: 120px;
+  background: transparent;
+  color: var(--secundario);
+  padding: 6px 2px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  border-radius: 12px;
+}
+nav button .icone { font-size: 20px; line-height: 1; }
+nav button .rotulo { font-size: 11px; font-weight: 600; }
+nav button.ativa { color: var(--primaria); background: var(--primaria-clara); }
+
+.badge {
+  display: inline-block;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+nav .badge { position: absolute; top: 2px; left: calc(50% + 8px); }
+
+/* Listas */
+.item { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.item strong { display: block; margin-bottom: 2px; }
+.linha { display: flex; gap: 8px; margin-top: 14px; }
+.codigo {
+  font-size: 30px; letter-spacing: 6px; font-weight: 800;
+  margin: 10px 0; color: var(--primaria);
+  background: var(--primaria-clara); border-radius: 12px; padding: 12px; text-align: center;
+}
+
+.atualizacao p { margin: 0 0 6px; line-height: 1.4; }
+.atualizacao.nova { border-left: 4px solid var(--primaria); }
+
+/* Resumo com anel de progresso */
+.resumo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 20px;
+  margin-bottom: 18px;
+  border-radius: 20px;
+  color: #fff;
+  background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
+  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.25);
+}
+.resumo-titulo { font-size: 14px; opacity: 0.85; }
+.resumo-num { font-size: 34px; font-weight: 800; margin: 4px 0; }
+.resumo-sub { font-size: 13px; opacity: 0.8; }
+.anel-fundo { fill: none; stroke: rgba(255, 255, 255, 0.2); stroke-width: 7; }
+.anel-valor { fill: none; stroke: #7dd3fc; stroke-width: 7; stroke-linecap: round; transform: rotate(-90deg); transform-origin: 39px 39px; }
+.anel-texto { fill: #fff; font-size: 14px; font-weight: 700; }
+
+.secao {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--secundario);
+  margin: 18px 4px 10px;
+}
+
+/* Cartões de tarefa e recompensa */
+.tarefa { display: flex; align-items: center; gap: 14px; padding: 14px 16px; }
+.icone-circ {
+  width: 46px; height: 46px; flex: 0 0 46px;
+  border-radius: 14px;
+  background: var(--primaria-clara);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px;
+}
+.tarefa-texto { flex: 1; min-width: 0; }
+.tarefa-texto strong { display: block; font-size: 16px; margin-bottom: 2px; }
+.tarefa-texto .detalhe { margin-bottom: 6px; }
+
+.chip {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.chip.pendente { background: #fef3c7; color: #92400e; }
+.chip.aguardando_aprovacao { background: var(--primaria-clara); color: var(--primaria-escura); }
+.chip.aprovada { background: #dcfce7; color: #166534; }
+
+.check {
+  width: 40px; height: 40px; flex: 0 0 40px;
+  border-radius: 50%;
+  border: 2px solid var(--primaria);
+  background: #fff;
+  color: var(--primaria);
+  font-size: 18px;
+  font-weight: 700;
+  padding: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.check:hover:not(:disabled) { background: var(--primaria); color: #fff; }
+
+textarea {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 12px;
+  font: inherit;
+  font-size: 16px;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  background: #fff;
+  color: var(--texto);
+  resize: vertical;
+}
+textarea:focus { outline: none; border-color: var(--primaria); box-shadow: 0 0 0 3px var(--primaria-clara); }
+
+.orientacao {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
+/* Ícones do menu: máscara colorida com a cor do texto do botão */
+nav .icone {
+  width: 24px;
+  height: 24px;
+  background: currentColor;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+}
+
+/* Ícone da tarefa no cartão: máscara azul */
+.icone-mascara {
+  width: 26px;
+  height: 26px;
+  background: var(--primaria);
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+}
+
+/* Logo na tela de entrada e ícone no cabeçalho */
+.logo-login { display: block; width: min(72vw, 280px); height: auto; margin: 0 auto 4px; }
+img.avatar { background: #fff; padding: 3px; border-radius: 12px; object-fit: contain; }
+
+/* Membros da casa e exclusão */
+.membro { padding: 10px 0; border-bottom: 1px solid var(--borda); }
+.membro:last-child { border-bottom: none; }
+.membro-acoes { display: flex; align-items: center; gap: 10px; }
+.perigo { background: #fee2e2; color: #b91c1c; font-weight: 600; }
+.perigo:hover:not(:disabled) { background: #fecaca; }

@@ -1,5 +1,8 @@
 // Regras de negócio puras (sem banco, sem HTTP).
 // Tudo que é "pode ou não pode" do CasaXP fica aqui.
+//
+// Os valores internos RESPONSAVEL e ADOLESCENTE NÃO mudam.
+// Na tela, eles aparecem como "Administrador" e "Usuário".
 
 export type Role = 'RESPONSAVEL' | 'ADOLESCENTE';
 export type TaskStatus = 'PENDENTE' | 'AGUARDANDO_APROVACAO' | 'APROVADA';
@@ -14,12 +17,12 @@ export interface TaskRef {
   status: TaskStatus;
 }
 
-/** Só o responsável cria tarefas, aprova/recusa e cria recompensas. */
+/** Só o administrador (RESPONSAVEL) cria tarefas, aprova/recusa e cria recompensas. */
 export function canManage(role: Role): boolean {
   return role === 'RESPONSAVEL';
 }
 
-/** Adolescente conclui só a própria tarefa, e só enquanto ela estiver pendente. */
+/** O usuário (ADOLESCENTE) conclui só a própria tarefa, e só enquanto ela estiver pendente. */
 export function canCompleteTask(userId: number, role: Role, task: TaskRef): boolean {
   return role === 'ADOLESCENTE' && task.assigneeId === userId && task.status === 'PENDENTE';
 }
@@ -29,7 +32,7 @@ export function canReviewTask(task: TaskRef): boolean {
   return task.status === 'AGUARDANDO_APROVACAO';
 }
 
-/** Adolescente resgata recompensa se tiver XP suficiente. */
+/** O usuário resgata recompensa se tiver XP suficiente. */
 export function canRedeem(role: Role, balance: number, cost: number): boolean {
   return role === 'ADOLESCENTE' && balance >= cost;
 }
@@ -54,4 +57,14 @@ export function validateEmail(email: unknown): string | null {
 export function validatePassword(pw: unknown): string | null {
   if (typeof pw !== 'string' || pw.length < 6) return 'A senha deve ter pelo menos 6 caracteres';
   return null;
+}
+
+/** Data de hoje no fuso de Brasília (AAAA-MM-DD). Define quando uma tarefa aprovada deve sumir. */
+export function dataHojeBrasil(agora: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(agora);
 }

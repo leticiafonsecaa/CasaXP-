@@ -1,0 +1,112 @@
+diff --git a/backend/src/routes/rewards.ts b/backend/src/routes/rewards.ts
+index e420bbf..75c8a91 100644
+--- a/backend/src/routes/rewards.ts
++++ b/backend/src/routes/rewards.ts
+@@ -61,3 +61,24 @@ rewardsRouter.post('/:id/redeem', (req, res) => {
+   });
+   res.json({ ok: true, xp: newBalance });
+ });
++
++/**
++ * Só o administrador exclui recompensas da própria casa.
++ * Os resgates antigos dela também são removidos. O XP já gasto não é devolvido.
++ */
++rewardsRouter.delete('/:id', (req, res) => {
++  const user = req.user!;
++  if (!canManage(user.role)) return res.status(403).json({ error: 'Apenas o administrador exclui recompensas' });
++
++  const id = Number(req.params.id);
++  const reward = db
++    .prepare('SELECT id FROM rewards WHERE id = ? AND household_id = ?')
++    .get(id, user.householdId);
++  if (!reward) return res.status(404).json({ error: 'Recompensa não encontrada' });
++
++  tx(() => {
++    db.prepare('DELETE FROM redemptions WHERE reward_id = ?').run(id);
++    db.prepare('DELETE FROM rewards WHERE id = ?').run(id);
++  });
++  res.json({ ok: true });
++});
+diff --git a/backend/test/api.test.ts b/backend/test/api.test.ts
+index bf0dc17..f11bed7 100644
+--- a/backend/test/api.test.ts
++++ b/backend/test/api.test.ts
+@@ -248,3 +248,42 @@ test('administrador exclui usuário da própria casa e o usuário perde o acesso
+   });
+   assert.equal(novo.status, 201);
+ });
++
++test('administrador exclui recompensa; usuário não exclui; resgates antigos somem sem devolver XP', async () => {
++  const admin = await call('POST', '/auth/signup', {
++    name: 'Mãe', email: 'mae7@teste.com', password: 'senha123', role: 'RESPONSAVEL',
++  });
++  const code = (await call('GET', '/household', undefined, admin.data.token)).data.inviteCode;
++  const filho = await call('POST', '/auth/signup', {
++    name: 'Davi', email: 'davi7@teste.com', password: 'senha123', role: 'ADOLESCENTE', inviteCode: code,
++  });
++  const fToken = filho.data.token;
++  const fId = filho.data.user.id;
++
++  // Usuário ganha 40 XP e resgata uma recompensa de 20.
++  const tarefa = await call('POST', '/tasks', { title: 'Lavar carro', xp: 40, assigneeId: fId }, admin.data.token);
++  await call('POST', `/tasks/${tarefa.data.id}/complete`, undefined, fToken);
++  await call('POST', `/tasks/${tarefa.data.id}/approve`, undefined, admin.data.token);
++  const recompensa = await call('POST', '/rewards', { title: 'Pipoca', cost: 20 }, admin.data.token);
++  const resgate = await call('POST', `/rewards/${recompensa.data.id}/redeem`, undefined, fToken);
++  assert.equal(resgate.data.xp, 20);
++
++  // Usuário não pode excluir.
++  assert.equal((await call('DELETE', `/rewards/${recompensa.data.id}`, undefined, fToken)).status, 403);
++
++  // Administrador de outra casa não enxerga a recompensa.
++  const outro = await call('POST', '/auth/signup', {
++    name: 'Outra', email: 'outra7@teste.com', password: 'senha123', role: 'RESPONSAVEL',
++  });
++  assert.equal((await call('DELETE', `/rewards/${recompensa.data.id}`, undefined, outro.data.token)).status, 404);
++
++  // Administrador da casa exclui.
++  assert.equal((await call('DELETE', `/rewards/${recompensa.data.id}`, undefined, admin.data.token)).status, 200);
++
++  const lista = (await call('GET', '/rewards', undefined, admin.data.token)).data.rewards;
++  assert.ok(!lista.some((r: any) => r.title === 'Pipoca'));
++
++  // XP continua gasto (20), sem devolução.
++  const eu = (await call('GET', '/auth/me', undefined, fToken)).data.user;
++  assert.equal(eu.xp, 20);
++});
+diff --git a/web/src/App.tsx b/web/src/App.tsx
+index b4575c2..ae3e08f 100644
+--- a/web/src/App.tsx
++++ b/web/src/App.tsx
+@@ -490,6 +490,21 @@ function RecompensasTab({ user, onMudou }: { user: User; onMudou: () => Promise<
+     }
+   }
+ 
++  async function excluirRecompensa(r: Reward) {
++    const confirmou = window.confirm(
++      `Excluir a recompensa "${r.title}"? Os resgates antigos dela também serão apagados. Essa ação não pode ser desfeita.`,
++    );
++    if (!confirmou) return;
++    setErro('');
++    setAviso('');
++    try {
++      await api('DELETE', `/rewards/${r.id}`);
++      await carregar();
++    } catch (err) {
++      setErro(err instanceof Error ? err.message : 'Erro');
++    }
++  }
++
+   return (
+     <section>
+       <h2>Recompensas</h2>
+@@ -524,6 +539,9 @@ function RecompensasTab({ user, onMudou }: { user: User; onMudou: () => Promise<
+               Resgatar
+             </button>
+           )}
++          {ehAdmin && (
++            <button className="perigo pequeno" onClick={() => excluirRecompensa(r)}>Excluir</button>
++          )}
+         </div>
+       ))}
+     </section>

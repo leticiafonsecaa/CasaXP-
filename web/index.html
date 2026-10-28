@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#2563eb" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="CasaXP" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <title>CasaXP</title>
+    <style>
+      #splash {
+        position: fixed; inset: 0; z-index: 1000;
+        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px;
+        background: #f1f6fd;
+        transition: opacity 0.35s ease;
+      }
+      #splash img { width: min(70vw, 300px); height: auto; animation: pulso 1.6s ease-in-out infinite; }
+      #splash .pontos { display: flex; gap: 8px; }
+      #splash .pontos span {
+        width: 10px; height: 10px; border-radius: 50%; background: #2563eb;
+        animation: pontos 1.2s ease-in-out infinite;
+      }
+      #splash .pontos span:nth-child(2) { animation-delay: 0.15s; }
+      #splash .pontos span:nth-child(3) { animation-delay: 0.3s; }
+      #splash.sumir { opacity: 0; pointer-events: none; }
+      @keyframes pulso { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.04); } }
+      @keyframes pontos { 0%, 80%, 100% { opacity: 0.25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-4px); } }
+    </style>
+  </head>
+  <body>
+    <div id="splash">
+      <img src="/icons/logo-splash.png" alt="CasaXP" />
+      <div class="pontos"><span></span><span></span><span></span></div>
+    </div>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

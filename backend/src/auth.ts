@@ -40,7 +40,7 @@ export function createSession(userId: number): string {
   return token;
 }
 
-/** Resolve o usuário a partir do token. Nunca confia em IDs enviados pelo cliente. */
+/** Descobre o usuário pelo token. Nunca confia em IDs enviados pelo cliente. */
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
   const header = req.headers.authorization ?? '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : '';
@@ -56,7 +56,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     )
     .get(token) as unknown as AuthUser | undefined;
   if (!row) {
-    res.status(401).json({ error: 'Sessão inválida' });
+    res.status(401).json({ error: 'Sessão inválida. Entre novamente.' });
     return;
   }
   req.user = row;

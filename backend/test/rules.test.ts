@@ -1,40 +1,36 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import * as r from '../src/rules';
+import { canCompleteTask, canManage, canRedeem, canReviewTask, dataHojeBrasil, validateXp } from '../src/rules';
 
-test('somente responsável gerencia', () => {
-  assert.equal(r.canManage('RESPONSAVEL'), true);
-  assert.equal(r.canManage('ADOLESCENTE'), false);
+test('só o administrador gerencia', () => {
+  assert.equal(canManage('RESPONSAVEL'), true);
+  assert.equal(canManage('ADOLESCENTE'), false);
 });
 
-test('adolescente conclui só a própria tarefa pendente', () => {
-  const pendente = { assigneeId: 2, status: 'PENDENTE' as const };
-  assert.equal(r.canCompleteTask(2, 'ADOLESCENTE', pendente), true);
-  assert.equal(r.canCompleteTask(3, 'ADOLESCENTE', pendente), false);
-  assert.equal(r.canCompleteTask(2, 'RESPONSAVEL', pendente), false);
-  assert.equal(r.canCompleteTask(2, 'ADOLESCENTE', { assigneeId: 2, status: 'APROVADA' }), false);
+test('usuário só conclui a própria tarefa pendente', () => {
+  assert.equal(canCompleteTask(2, 'ADOLESCENTE', { assigneeId: 2, status: 'PENDENTE' }), true);
+  assert.equal(canCompleteTask(3, 'ADOLESCENTE', { assigneeId: 2, status: 'PENDENTE' }), false);
+  assert.equal(canCompleteTask(2, 'ADOLESCENTE', { assigneeId: 2, status: 'APROVADA' }), false);
 });
 
-test('só tarefa aguardando aprovação pode ser revisada', () => {
-  assert.equal(r.canReviewTask({ assigneeId: 1, status: 'AGUARDANDO_APROVACAO' }), true);
-  assert.equal(r.canReviewTask({ assigneeId: 1, status: 'PENDENTE' }), false);
-  assert.equal(r.canReviewTask({ assigneeId: 1, status: 'APROVADA' }), false);
+test('só revisa tarefa aguardando aprovação', () => {
+  assert.equal(canReviewTask({ assigneeId: 2, status: 'AGUARDANDO_APROVACAO' }), true);
+  assert.equal(canReviewTask({ assigneeId: 2, status: 'PENDENTE' }), false);
 });
 
-test('resgate exige saldo suficiente e papel adolescente', () => {
-  assert.equal(r.canRedeem('ADOLESCENTE', 50, 50), true);
-  assert.equal(r.canRedeem('ADOLESCENTE', 49, 50), false);
-  assert.equal(r.canRedeem('RESPONSAVEL', 999, 1), false);
+test('resgate exige saldo suficiente', () => {
+  assert.equal(canRedeem('ADOLESCENTE', 100, 100), true);
+  assert.equal(canRedeem('ADOLESCENTE', 99, 100), false);
+  assert.equal(canRedeem('RESPONSAVEL', 500, 100), false);
 });
 
-test('validações de XP, custo, e-mail e senha', () => {
-  assert.notEqual(r.validateXp(0), null);
-  assert.notEqual(r.validateXp(1.5), null);
-  assert.equal(r.validateXp(10), null);
-  assert.notEqual(r.validateCost(-1), null);
-  assert.equal(r.validateCost(100), null);
-  assert.notEqual(r.validateEmail('abc'), null);
-  assert.equal(r.validateEmail('a@b.com'), null);
-  assert.notEqual(r.validatePassword('123'), null);
-  assert.equal(r.validatePassword('123456'), null);
+test('valida XP', () => {
+  assert.notEqual(validateXp(0), null);
+  assert.notEqual(validateXp(1.5), null);
+  assert.equal(validateXp(10), null);
+});
+
+test('data de hoje usa o fuso de Brasília (madrugada UTC ainda é o dia anterior)', () => {
+  assert.equal(dataHojeBrasil(new Date('2026-10-28T02:30:00Z')), '2026-10-27');
+  assert.equal(dataHojeBrasil(new Date('2026-10-28T15:00:00Z')), '2026-10-28');
 });

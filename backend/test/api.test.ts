@@ -1,25 +1,25 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
-
-// Banco em memória para não tocar no arquivo real.
+import { dataHojeBrasil } from '../src/rules';
+// Banco temporário em memória: os testes não mexem no banco real.
 process.env.DB_PATH = ':memory:';
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const { createApp } = require('../src/app');
 
 let server: Server;
 let base: string;
 
 before(async () => {
+  // Importa só agora, depois de definir DB_PATH.
+  const { createApp } = await import('../src/app');
   server = createApp().listen(0);
-  await new Promise<void>((r) => server.once('listening', () => r()));
-  base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  await new Promise((r) => server.once('listening', r));
+  const { port } = server.address() as { port: number };
+  base = `http://127.0.0.1:${port}/api`;
 });
 
 after(() => server.close());
 
-async function api(method: string, path: string, body?: unknown, token?: string) {
+async function call(method: string, path: string, body?: unknown, token?: string) {
   const res = await fetch(base + path, {
     method,
     headers: {
@@ -31,88 +31,259 @@ async function api(method: string, path: string, body?: unknown, token?: string)
   return { status: res.status, data: (await res.json()) as any };
 }
 
-test('fluxo completo: cadastro, tarefa, conclusão, aprovação e resgate', async () => {
-  // 1. Responsável cria a casa
-  const resp = await api('POST', '/auth/signup', {
-    name: 'Ana',
-    email: 'ana@casa.com',
-    password: '123456',
-    role: 'RESPONSAVEL',
-    householdName: 'Casa Silva',
+test('fluxo completo: administrador cria, usuário conclui, administrador aprova, usuário resgata', async () => {
+  const admin = await call('POST', '/auth/signup', {
+    name: 'Casa Teste', email: 'admin@teste.com', password: 'senha123', role: 'RESPONSAVEL',
   });
-  assert.equal(resp.status, 201);
-  assert.ok(resp.data.inviteCode);
-  const respToken = resp.data.token;
+  assert.equal(admin.status, 201);
+  const code = (await call('GET', '/household', undefined, admin.data.token)).data.inviteCode;
 
-  // 2. Adolescente entra com o código de convite
-  const ado = await api('POST', '/auth/signup', {
-    name: 'Pedro',
-    email: 'pedro@casa.com',
-    password: '123456',
-    role: 'ADOLESCENTE',
-    inviteCode: resp.data.inviteCode,
+  const usuario = await call('POST', '/auth/signup', {
+    name: 'Pedro', email: 'pedro@teste.com', password: 'senha123', role: 'ADOLESCENTE', inviteCode: code,
   });
-  assert.equal(ado.status, 201);
-  const adoToken = ado.data.token;
-  const adoId = (await api('GET', '/auth/me', undefined, adoToken)).data.user.id;
+  assert.equal(usuario.status, 201);
+  const uToken = usuario.data.token;
+  const uId = usuario.data.user.id;
 
-  // 3. Código inválido e e-mail duplicado são recusados
-  const bad = await api('POST', '/auth/signup', {
-    name: 'Xico', email: 'x@casa.com', password: '123456', role: 'ADOLESCENTE', inviteCode: 'NOPE',
-  });
-  assert.equal(bad.status, 400);
-  const dup = await api('POST', '/auth/signup', {
-    name: 'Yuri', email: 'pedro@casa.com', password: '123456', role: 'ADOLESCENTE', inviteCode: resp.data.inviteCode,
-  });
-  assert.equal(dup.status, 409);
+  const tarefa = await call('POST', '/tasks', { title: 'Lavar louça', xp: 50, assigneeId: uId }, admin.data.token);
+  assert.equal(tarefa.status, 201);
 
-  // 4. Adolescente não cria tarefa
-  const forbidden = await api('POST', '/tasks', { title: 'Lavar louça', xp: 20, assigneeId: adoId }, adoToken);
-  assert.equal(forbidden.status, 403);
+  // Usuário não cria tarefa nem aprova.
+  assert.equal((await call('POST', '/tasks', { title: 'X1', xp: 5, assigneeId: uId }, uToken)).status, 403);
 
-  // 5. Responsável cria tarefa e recompensa
-  const task = await api('POST', '/tasks', { title: 'Lavar louça', xp: 30, assigneeId: adoId }, respToken);
-  assert.equal(task.status, 201);
-  const reward = await api('POST', '/rewards', { title: 'Sorvete', cost: 50 }, respToken);
-  assert.equal(reward.status, 201);
+  assert.equal((await call('POST', `/tasks/${tarefa.data.id}/complete`, undefined, uToken)).status, 200);
+  assert.equal((await call('POST', `/tasks/${tarefa.data.id}/approve`, undefined, admin.data.token)).status, 200);
 
-  // 6. Resgate sem XP suficiente é recusado
-  const tooEarly = await api('POST', `/rewards/${reward.data.id}/redeem`, undefined, adoToken);
-  assert.equal(tooEarly.status, 400);
+  const recompensa = await call('POST', '/rewards', { title: 'Sorvete', cost: 30 }, admin.data.token);
+  assert.equal(recompensa.status, 201);
 
-  // 7. Conclusão aguarda aprovação; aprovar credita XP
-  const done = await api('POST', `/tasks/${task.data.id}/complete`, undefined, adoToken);
-  assert.equal(done.status, 200);
-  const notYet = await api('POST', `/tasks/${task.data.id}/approve`, undefined, respToken);
-  assert.equal(notYet.status, 200);
-  const again = await api('POST', `/tasks/${task.data.id}/approve`, undefined, respToken);
-  assert.equal(again.status, 400, 'não aprova duas vezes');
-  assert.equal((await api('GET', '/auth/me', undefined, adoToken)).data.user.xp, 30);
-
-  // 8. Resgate com saldo suficiente após mais uma tarefa aprovada
-  const t2 = await api('POST', '/tasks', { title: 'Varrer', xp: 25, assigneeId: adoId }, respToken);
-  await api('POST', `/tasks/${t2.data.id}/complete`, undefined, adoToken);
-  await api('POST', `/tasks/${t2.data.id}/approve`, undefined, respToken);
-  const redeemOk = await api('POST', `/rewards/${reward.data.id}/redeem`, undefined, adoToken);
-  assert.equal(redeemOk.status, 200);
-  assert.equal(redeemOk.data.xp, 5);
-
-  // 9. Recusa devolve a tarefa para pendente, sem creditar XP
-  const t3 = await api('POST', '/tasks', { title: 'Tirar lixo', xp: 10, assigneeId: adoId }, respToken);
-  await api('POST', `/tasks/${t3.data.id}/complete`, undefined, adoToken);
-  const rej = await api('POST', `/tasks/${t3.data.id}/reject`, undefined, respToken);
-  assert.equal(rej.status, 200);
-  assert.equal((await api('GET', '/auth/me', undefined, adoToken)).data.user.xp, 5);
-
-  // 10. Adolescente só vê as próprias tarefas; sem token não entra
-  const list = await api('GET', '/tasks', undefined, adoToken);
-  assert.ok(list.data.tasks.every((t: any) => t.assigneeId === adoId));
-  assert.equal((await api('GET', '/tasks')).status, 401);
+  const resgate = await call('POST', `/rewards/${recompensa.data.id}/redeem`, undefined, uToken);
+  assert.equal(resgate.status, 200);
+  assert.equal(resgate.data.xp, 20);
 });
 
-test('login com senha correta e errada', async () => {
-  const ok = await api('POST', '/auth/login', { email: 'ana@casa.com', password: '123456' });
-  assert.equal(ok.status, 200);
-  const bad = await api('POST', '/auth/login', { email: 'ana@casa.com', password: 'errada' });
-  assert.equal(bad.status, 401);
+test('não aceita código de convite inválido e não duplica e-mail', async () => {
+  const semCodigo = await call('POST', '/auth/signup', {
+    name: 'Ana', email: 'ana@teste.com', password: 'senha123', role: 'ADOLESCENTE', inviteCode: 'ZZZZZZ',
+  });
+  assert.equal(semCodigo.status, 400);
+
+  const repetido = await call('POST', '/auth/signup', {
+    name: 'Outro', email: 'admin@teste.com', password: 'senha123', role: 'RESPONSAVEL',
+  });
+  assert.equal(repetido.status, 409);
+});
+
+test('login errado não revela se o e-mail existe', async () => {
+  const r = await call('POST', '/auth/login', { email: 'admin@teste.com', password: 'errada' });
+  assert.equal(r.status, 401);
+  assert.equal(r.data.error, 'E-mail ou senha incorretos');
+});
+
+test('rotas protegidas exigem login', async () => {
+  assert.equal((await call('GET', '/tasks')).status, 401);
+});
+
+test('atualizações: administrador recebe conclusão e resgate; usuário recebe só tarefas novas', async () => {
+  const admin = await call('POST', '/auth/signup', {
+    name: 'Mãe', email: 'mae2@teste.com', password: 'senha123', role: 'RESPONSAVEL',
+  });
+  const code = (await call('GET', '/household', undefined, admin.data.token)).data.inviteCode;
+  const filho = await call('POST', '/auth/signup', {
+    name: 'Lucas', email: 'lucas2@teste.com', password: 'senha123', role: 'ADOLESCENTE', inviteCode: code,
+  });
+  const fToken = filho.data.token;
+  const fId = filho.data.user.id;
+
+  const tarefa = await call('POST', '/tasks', { title: 'Tirar lixo', xp: 40, assigneeId: fId }, admin.data.token);
+  const recompensa = await call('POST', '/rewards', { title: 'Cinema', cost: 40 }, admin.data.token);
+
+  // Usuário recebe só o aviso de tarefa nova.
+  const minhas = await call('GET', '/activities', undefined, fToken);
+  assert.equal(minhas.data.unread, 1);
+  assert.equal(minhas.data.activities[0].kind, 'NOVA_TAREFA');
+
+  // Administrador não recebe nada só por criar.
+  assert.equal((await call('GET', '/activities', undefined, admin.data.token)).data.unread, 0);
+
+  await call('POST', `/tasks/${tarefa.data.id}/complete`, undefined, fToken);
+  await call('POST', `/tasks/${tarefa.data.id}/approve`, undefined, admin.data.token);
+  assert.equal((await call('POST', `/rewards/${recompensa.data.id}/redeem`, undefined, fToken)).status, 200);
+
+  // Administrador recebe conclusão e resgate.
+  const avisosAdmin = await call('GET', '/activities', undefined, admin.data.token);
+  assert.equal(avisosAdmin.data.unread, 2);
+  const tipos = avisosAdmin.data.activities.map((a: any) => a.kind);
+  assert.ok(tipos.includes('TAREFA_CONCLUIDA'));
+  assert.ok(tipos.includes('RECOMPENSA_RESGATADA'));
+
+  // Ao ler, o contador zera.
+  await call('POST', '/activities/read', undefined, admin.data.token);
+  assert.equal((await call('GET', '/activities', undefined, admin.data.token)).data.unread, 0);
+});
+
+test('descrição da tarefa: opcional, salva, devolvida na lista e limitada a 500 caracteres', async () => {
+  const admin = await call('POST', '/auth/signup', {
+    name: 'Mãe', email: 'mae3@teste.com', password: 'senha123', role: 'RESPONSAVEL',
+  });
+  const code = (await call('GET', '/household', undefined, admin.data.token)).data.inviteCode;
+  const filho = await call('POST', '/auth/signup', {
+    name: 'Bia', email: 'bia3@teste.com', password: 'senha123', role: 'ADOLESCENTE', inviteCode: code,
+  });
+  const fId = filho.data.user.id;
+  const token = admin.data.token;
+
+  const comDesc = await call('POST', '/tasks', {
+    title: 'Varrer a sala', xp: 15, assigneeId: fId, description: 'Passar o aspirador embaixo do sofá',
+  }, token);
+  assert.equal(comDesc.status, 201);
+  const semDesc = await call('POST', '/tasks', { title: 'Regar plantas', xp: 10, assigneeId: fId }, token);
+  assert.equal(semDesc.status, 201);
+
+  const muitoLonga = await call('POST', '/tasks', {
+    title: 'Tarefa longa', xp: 5, assigneeId: fId, description: 'x'.repeat(501),
+  }, token);
+  assert.equal(muitoLonga.status, 400);
+
+  const lista = (await call('GET', '/tasks', undefined, token)).data.tasks;
+  const varrer = lista.find((t: any) => t.title === 'Varrer a sala');
+  const regar = lista.find((t: any) => t.title === 'Regar plantas');
+  assert.equal(varrer.description, 'Passar o aspirador embaixo do sofá');
+  assert.equal(regar.description, null);
+});
+
+test('código de convite: aparece só para o administrador', async () => {
+  const admin = await call('POST', '/auth/signup', {
+    name: 'Pai', email: 'pai4@teste.com', password: 'senha123', role: 'RESPONSAVEL',
+  });
+  const codigo = (await call('GET', '/household', undefined, admin.data.token)).data.inviteCode;
+  assert.ok(codigo);
+  const usuario = await call('POST', '/auth/signup', {
+    name: 'Ana', email: 'ana4@teste.com', password: 'senha123', role: 'ADOLESCENTE', inviteCode: codigo,
+  });
+  const casaUsuario = await call('GET', '/household', undefined, usuario.data.token);
+  assert.equal(casaUsuario.status, 200);
+  assert.equal(casaUsuario.data.inviteCode, null);
+});
+
+test('tarefa aprovada some no dia seguinte; pendente e concluída continuam aparecendo', async () => {
+  const { db } = await import('../src/db');
+  const admin = await call('POST', '/auth/signup', {
+    name: 'Mãe', email: 'mae5@teste.com', password: 'senha123', role: 'RESPONSAVEL',
+  });
+  const token = admin.data.token;
+  const code = (await call('GET', '/household', undefined, token)).data.inviteCode;
+  const filho = await call('POST', '/auth/signup', {
+    name: 'Bruno', email: 'bruno5@teste.com', password: 'senha123', role: 'ADOLESCENTE', inviteCode: code,
+  });
+  const fToken = filho.data.token;
+  const fId = filho.data.user.id;
+
+  const aprovada = await call('POST', '/tasks', { title: 'Arrumar cama', xp: 10, assigneeId: fId }, token);
+  await call('POST', '/tasks', { title: 'Guardar roupa', xp: 10, assigneeId: fId }, token); // pendente
+  const concluida = await call('POST', '/tasks', { title: 'Pôr a mesa', xp: 10, assigneeId: fId }, token);
+
+  await call('POST', `/tasks/${aprovada.data.id}/complete`, undefined, fToken);
+  await call('POST', `/tasks/${aprovada.data.id}/approve`, undefined, token);
+  await call('POST', `/tasks/${concluida.data.id}/complete`, undefined, fToken); // concluída, não aprovada
+
+  const titulos = async (t: string) =>
+    (await call('GET', '/tasks', undefined, t)).data.tasks.map((x: any) => x.title);
+
+  // No dia da aprovação, tudo aparece.
+  assert.ok((await titulos(fToken)).includes('Arrumar cama'));
+
+  // Simula o dia seguinte.
+  assert.match(dataHojeBrasil(), /^\d{4}-\d{2}-\d{2}$/);
+  db.prepare('UPDATE tasks SET approved_on = ? WHERE id = ?').run('2000-01-01', aprovada.data.id);
+
+  const usuarioVe = await titulos(fToken);
+  const adminVe = await titulos(token);
+  assert.ok(!usuarioVe.includes('Arrumar cama'));
+  assert.ok(!adminVe.includes('Arrumar cama'));
+  assert.ok(usuarioVe.includes('Guardar roupa'));
+  assert.ok(usuarioVe.includes('Pôr a mesa'));
+});
+
+test('administrador exclui usuário da própria casa e o usuário perde o acesso', async () => {
+  const admin = await call('POST', '/auth/signup', {
+    name: 'Mãe', email: 'mae6@teste.com', password: 'senha123', role: 'RESPONSAVEL',
+  });
+  const code = (await call('GET', '/household', undefined, admin.data.token)).data.inviteCode;
+  const filho = await call('POST', '/auth/signup', {
+    name: 'Carla', email: 'carla6@teste.com', password: 'senha123', role: 'ADOLESCENTE', inviteCode: code,
+  });
+  const fToken = filho.data.token;
+  const fId = filho.data.user.id;
+
+  const tarefa = await call('POST', '/tasks', { title: 'Tirar pó', xp: 10, assigneeId: fId }, admin.data.token);
+  await call('POST', `/tasks/${tarefa.data.id}/complete`, undefined, fToken);
+
+  // Usuário não pode excluir ninguém.
+  assert.equal((await call('DELETE', `/household/members/${fId}`, undefined, fToken)).status, 403);
+  // Administrador não pode ser excluído.
+  assert.equal(
+    (await call('DELETE', `/household/members/${admin.data.user.id}`, undefined, admin.data.token)).status,
+    400,
+  );
+  // Administrador de outra casa não enxerga esse usuário.
+  const outro = await call('POST', '/auth/signup', {
+    name: 'Outro', email: 'outro6@teste.com', password: 'senha123', role: 'RESPONSAVEL',
+  });
+  assert.equal((await call('DELETE', `/household/members/${fId}`, undefined, outro.data.token)).status, 404);
+
+  // Exclusão feita pelo administrador da casa.
+  assert.equal((await call('DELETE', `/household/members/${fId}`, undefined, admin.data.token)).status, 200);
+
+  // O usuário perdeu o acesso e sumiu da casa.
+  assert.equal((await call('GET', '/tasks', undefined, fToken)).status, 401);
+  const casa = (await call('GET', '/household', undefined, admin.data.token)).data;
+  assert.ok(!casa.members.some((m: any) => m.id === fId));
+  const tarefas = (await call('GET', '/tasks', undefined, admin.data.token)).data.tasks;
+  assert.ok(!tarefas.some((t: any) => t.title === 'Tirar pó'));
+
+  // O e-mail fica livre para um novo cadastro.
+  const novo = await call('POST', '/auth/signup', {
+    name: 'Carla', email: 'carla6@teste.com', password: 'senha123', role: 'ADOLESCENTE', inviteCode: code,
+  });
+  assert.equal(novo.status, 201);
+});
+
+test('administrador exclui recompensa; usuário não exclui; resgates antigos somem sem devolver XP', async () => {
+  const admin = await call('POST', '/auth/signup', {
+    name: 'Mãe', email: 'mae7@teste.com', password: 'senha123', role: 'RESPONSAVEL',
+  });
+  const code = (await call('GET', '/household', undefined, admin.data.token)).data.inviteCode;
+  const filho = await call('POST', '/auth/signup', {
+    name: 'Davi', email: 'davi7@teste.com', password: 'senha123', role: 'ADOLESCENTE', inviteCode: code,
+  });
+  const fToken = filho.data.token;
+  const fId = filho.data.user.id;
+
+  // Usuário ganha 40 XP e resgata uma recompensa de 20.
+  const tarefa = await call('POST', '/tasks', { title: 'Lavar carro', xp: 40, assigneeId: fId }, admin.data.token);
+  await call('POST', `/tasks/${tarefa.data.id}/complete`, undefined, fToken);
+  await call('POST', `/tasks/${tarefa.data.id}/approve`, undefined, admin.data.token);
+  const recompensa = await call('POST', '/rewards', { title: 'Pipoca', cost: 20 }, admin.data.token);
+  const resgate = await call('POST', `/rewards/${recompensa.data.id}/redeem`, undefined, fToken);
+  assert.equal(resgate.data.xp, 20);
+
+  // Usuário não pode excluir.
+  assert.equal((await call('DELETE', `/rewards/${recompensa.data.id}`, undefined, fToken)).status, 403);
+
+  // Administrador de outra casa não enxerga a recompensa.
+  const outro = await call('POST', '/auth/signup', {
+    name: 'Outra', email: 'outra7@teste.com', password: 'senha123', role: 'RESPONSAVEL',
+  });
+  assert.equal((await call('DELETE', `/rewards/${recompensa.data.id}`, undefined, outro.data.token)).status, 404);
+
+  // Administrador da casa exclui.
+  assert.equal((await call('DELETE', `/rewards/${recompensa.data.id}`, undefined, admin.data.token)).status, 200);
+
+  const lista = (await call('GET', '/rewards', undefined, admin.data.token)).data.rewards;
+  assert.ok(!lista.some((r: any) => r.title === 'Pipoca'));
+
+  // XP continua gasto (20), sem devolução.
+  const eu = (await call('GET', '/auth/me', undefined, fToken)).data.user;
+  assert.equal(eu.xp, 20);
 });

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { db, tx } from '../db';
+import { administradoresDaCasa, registrarAtividade } from '../activities';
 import { canManage, canRedeem, validateCost } from '../rules';
 
 export const rewardsRouter = Router();
@@ -11,10 +12,10 @@ rewardsRouter.get('/', (req, res) => {
   res.json({ rewards: rows });
 });
 
-/** Só o responsável cria recompensas. */
+/** Só o administrador cria recompensas. */
 rewardsRouter.post('/', (req, res) => {
   const user = req.user!;
-  if (!canManage(user.role)) return res.status(403).json({ error: 'Apenas o responsável cria recompensas' });
+  if (!canManage(user.role)) return res.status(403).json({ error: 'Apenas o administrador cria recompensas' });
 
   const { title, cost } = req.body ?? {};
   if (typeof title !== 'string' || title.trim().length < 2) {
@@ -29,15 +30,15 @@ rewardsRouter.post('/', (req, res) => {
   res.status(201).json({ id: Number(info.lastInsertRowid) });
 });
 
-/** Adolescente resgata: debita o XP e registra o resgate, numa transação. */
+/** O usuário resgata: debita o XP e registra o resgate, numa transação. */
 rewardsRouter.post('/:id/redeem', (req, res) => {
   const user = req.user!;
   const reward = db
-    .prepare('SELECT id, cost FROM rewards WHERE id = ? AND household_id = ?')
-    .get(Number(req.params.id), user.householdId) as { id: number; cost: number } | undefined;
+    .prepare('SELECT id, title, cost FROM rewards WHERE id = ? AND household_id = ?')
+    .get(Number(req.params.id), user.householdId) as { id: number; title: string; cost: number } | undefined;
   if (!reward) return res.status(404).json({ error: 'Recompensa não encontrada' });
 
-  // Lê o saldo atual do banco, não do token, para evitar saldo desatualizado.
+  // Lê o saldo do banco (não do token), para não usar saldo desatualizado.
   const current = db.prepare('SELECT xp FROM users WHERE id = ?').get(user.id) as { xp: number };
   if (!canRedeem(user.role, current.xp, reward.cost)) {
     return res.status(400).json({ error: 'XP insuficiente para este resgate' });
@@ -48,5 +49,36 @@ rewardsRouter.post('/:id/redeem', (req, res) => {
     db.prepare('INSERT INTO redemptions (reward_id, user_id) VALUES (?, ?)').run(reward.id, user.id);
     return current.xp - reward.cost;
   });
+
+  // Avisa todos os administradores da casa.
+  registrarAtividade({
+    householdId: user.householdId,
+    recipientIds: administradoresDaCasa(user.householdId),
+    actorId: user.id,
+    kind: 'RECOMPENSA_RESGATADA',
+    title: reward.title,
+    amount: reward.cost,
+  });
   res.json({ ok: true, xp: newBalance });
+});
+
+/**
+ * Só o administrador exclui recompensas da própria casa.
+ * Os resgates antigos dela também são removidos. O XP já gasto não é devolvido.
+ */
+rewardsRouter.delete('/:id', (req, res) => {
+  const user = req.user!;
+  if (!canManage(user.role)) return res.status(403).json({ error: 'Apenas o administrador exclui recompensas' });
+
+  const id = Number(req.params.id);
+  const reward = db
+    .prepare('SELECT id FROM rewards WHERE id = ? AND household_id = ?')
+    .get(id, user.householdId);
+  if (!reward) return res.status(404).json({ error: 'Recompensa não encontrada' });
+
+  tx(() => {
+    db.prepare('DELETE FROM redemptions WHERE reward_id = ?').run(id);
+    db.prepare('DELETE FROM rewards WHERE id = ?').run(id);
+  });
+  res.json({ ok: true });
 });
