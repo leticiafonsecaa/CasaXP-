@@ -27,6 +27,9 @@ householdRouter.delete('/members/:id', ah(async (req, res) => {
     return res.status(403).json({ error: 'Apenas o administrador pode excluir usuários' });
   }
   const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0 || id === user.id) {
+    return res.status(400).json({ error: 'Identificador de usuário inválido' });
+  }
   const alvo = await get<{ id: number; role: string }>(
     'SELECT id, role FROM users WHERE id = ? AND household_id = ?',
     [id, user.householdId],

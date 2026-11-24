@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { administradoresDaCasa, registrarAtividade } from '../activities';
-import { atomic, all, get, run } from '../db';
+import { db, atomic, all, get, run } from '../db';
 import { ah } from '../http';
 import { canCompleteTask, canManage, canReviewTask, dataHojeBrasil, validateXp, type TaskStatus } from '../rules';
 
@@ -100,21 +100,60 @@ tasksRouter.post('/:id/complete', ah(async (req, res) => {
   res.json({ ok: true });
 }));
 
-/** O administrador aprova: credita o XP ao usuário, na mesma operação. */
+
+/** O administrador aprova e credita o XP uma única vez. */
 tasksRouter.post('/:id/approve', ah(async (req, res) => {
   const user = req.user!;
-  if (!canManage(user.role)) return res.status(403).json({ error: 'Apenas o administrador aprova' });
+
+  if (!canManage(user.role)) {
+    return res.status(403).json({ error: 'Apenas o administrador aprova' });
+  }
+
   const task = await findTask(Number(req.params.id), user.householdId);
-  if (!task) return res.status(404).json({ error: 'Tarefa não encontrada' });
+
+  if (!task) {
+    return res.status(404).json({ error: 'Tarefa não encontrada' });
+  }
+
   if (!canReviewTask({ assigneeId: Number(task.assignee_id), status: task.status })) {
     return res.status(400).json({ error: 'Esta tarefa não está aguardando aprovação' });
   }
-  await atomic([
-    { sql: "UPDATE tasks SET status = 'APROVADA', approved_on = ? WHERE id = ?", args: [dataHojeBrasil(), task.id] },
-    { sql: 'UPDATE users SET xp = xp + ? WHERE id = ?', args: [task.xp, task.assignee_id] },
-  ]);
-  res.json({ ok: true });
+
+  const transaction = await db.transaction('write');
+
+  try {
+    const resultado = await transaction.execute({
+      sql: `UPDATE tasks
+            SET status = 'APROVADA', approved_on = ?
+            WHERE id = ?
+              AND household_id = ?
+              AND status = 'AGUARDANDO_APROVACAO'`,
+      args: [dataHojeBrasil(), task.id, user.householdId],
+    });
+
+    if (resultado.rowsAffected !== 1) {
+      await transaction.rollback();
+      return res.status(400).json({
+        error: 'Esta tarefa já foi processada',
+      });
+    }
+
+    await transaction.execute({
+      sql: 'UPDATE users SET xp = xp + ? WHERE id = ? AND household_id = ?',
+      args: [task.xp, task.assignee_id, user.householdId],
+    });
+
+    await transaction.commit();
+
+    res.json({ ok: true });
+  } catch (error) {
+    await transaction.rollback();
+    throw error;
+  } finally {
+    transaction.close();
+  }
 }));
+
 
 /** O administrador recusa: a tarefa volta a ficar pendente, sem XP. */
 tasksRouter.post('/:id/reject', ah(async (req, res) => {

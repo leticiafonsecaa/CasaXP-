@@ -16,11 +16,33 @@ interface Evento {
 export async function registrarAtividade(e: Evento): Promise<void> {
   if (e.recipientIds.length === 0) return;
   await atomic(
-    e.recipientIds.map((recipientId) => ({
-      sql: 'INSERT INTO activities (household_id, recipient_id, actor_id, kind, title, amount, description) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      args: [e.householdId, recipientId, e.actorId, e.kind, e.title, e.amount, e.description ?? null],
-    })),
-  );
+  e.recipientIds.map((recipientId) => ({
+    sql: `INSERT INTO activities
+          (household_id, recipient_id, actor_id, kind, title, amount, description)
+          SELECT ?, ?, ?, ?, ?, ?, ?
+          WHERE EXISTS (
+            SELECT 1 FROM users
+            WHERE id = ? AND household_id = ?
+          )
+          AND EXISTS (
+            SELECT 1 FROM users
+            WHERE id = ? AND household_id = ?
+          )`,
+    args: [
+      e.householdId,
+      recipientId,
+      e.actorId,
+      e.kind,
+      e.title,
+      e.amount,
+      e.description ?? null,
+      recipientId,
+      e.householdId,
+      e.actorId,
+      e.householdId,
+    ],
+  })),
+);
 }
 
 /** Ids de todos os administradores da casa. */

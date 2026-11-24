@@ -28,15 +28,34 @@ export function hashPassword(password: string): string {
 }
 
 export function verifyPassword(password: string, stored: string): boolean {
-  const [salt, hash] = stored.split(':');
-  const expected = Buffer.from(hash, 'hex');
-  const actual = crypto.scryptSync(password, salt, expected.length);
-  return crypto.timingSafeEqual(actual, expected);
+  try {
+    const [salt, hash] = stored.split(':');
+
+    if (!salt || !hash || !/^[a-f0-9]+$/i.test(hash) || hash.length % 2 !== 0) {
+      return false;
+    }
+
+    const expected = Buffer.from(hash, 'hex');
+
+    if (expected.length !== 64) return false;
+
+    const actual = crypto.scryptSync(password, salt, expected.length);
+
+    return crypto.timingSafeEqual(actual, expected);
+  } catch {
+    return false;
+  }
 }
 
 export async function createSession(userId: number): Promise<string> {
   const token = crypto.randomBytes(32).toString('hex');
-  await run('INSERT INTO sessions (token, user_id) VALUES (?, ?)', [token, userId]);
+
+  await run(
+    `INSERT INTO sessions (token, user_id, expires_at)
+     VALUES (?, ?, datetime('now', '+7 days'))`,
+    [token, userId],
+  );
+
   return token;
 }
 
@@ -52,7 +71,8 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     const row = await get<AuthUser>(
       `SELECT u.id, u.household_id AS householdId, u.name, u.email, u.role, u.xp
          FROM sessions s JOIN users u ON u.id = s.user_id
-        WHERE s.token = ?`,
+        WHERE s.token = ?
+          AND s.expires_at > CURRENT_TIMESTAMP`,
       [token],
     );
     if (!row) {

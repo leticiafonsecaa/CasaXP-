@@ -77,7 +77,8 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS sessions (
   token      TEXT PRIMARY KEY,
   user_id    INTEGER NOT NULL REFERENCES users(id),
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  expires_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS tasks (
@@ -117,7 +118,7 @@ CREATE TABLE IF NOT EXISTS activities (
   created_at   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 `);
-
+  await db.execute(`ALTER TABLE sessions ADD COLUMN expires_at TEXT`).catch(() => {});
   await garantirColuna('tasks', 'description', 'TEXT');
   await garantirColuna('tasks', 'approved_on', 'TEXT');
   await garantirColuna('activities', 'description', 'TEXT');

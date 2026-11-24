@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { administradoresDaCasa, registrarAtividade } from '../activities';
-import { all, atomic, get, run } from '../db';
+import { db, all, atomic, get, run } from '../db';
 import { ah } from '../http';
 import { canManage, canRedeem, validateCost } from '../rules';
 
@@ -33,27 +33,51 @@ rewardsRouter.post('/', ah(async (req, res) => {
   res.status(201).json({ id: info.lastInsertRowid });
 }));
 
-/** O usuário resgata: debita o XP e registra o resgate, na mesma operação. */
+/** O usuário resgata: debita o XP e registra o resgate na mesma transação. */
 rewardsRouter.post('/:id/redeem', ah(async (req, res) => {
   const user = req.user!;
+
   const reward = await get<{ id: number; title: string; cost: number }>(
     'SELECT id, title, cost FROM rewards WHERE id = ? AND household_id = ?',
     [Number(req.params.id), user.householdId],
   );
-  if (!reward) return res.status(404).json({ error: 'Recompensa não encontrada' });
 
-  // Lê o saldo do banco (não do token), para não usar saldo desatualizado.
-  const current = await get<{ xp: number }>('SELECT xp FROM users WHERE id = ?', [user.id]);
-  if (!canRedeem(user.role, Number(current!.xp), Number(reward.cost))) {
-    return res.status(400).json({ error: 'XP insuficiente para este resgate' });
+  if (!reward) {
+    return res.status(404).json({ error: 'Recompensa não encontrada' });
   }
 
-  await atomic([
-    { sql: 'UPDATE users SET xp = xp - ? WHERE id = ?', args: [reward.cost, user.id] },
-    { sql: 'INSERT INTO redemptions (reward_id, user_id) VALUES (?, ?)', args: [reward.id, user.id] },
-  ]);
+  const transaction = await db.transaction('write');
 
-  // Avisa todos os administradores da casa.
+  try {
+    const resultado = await transaction.execute({
+      sql: `UPDATE users
+            SET xp = xp - ?
+            WHERE id = ?
+              AND household_id = ?
+              AND xp >= ?`,
+      args: [reward.cost, user.id, user.householdId, reward.cost],
+    });
+
+    if (resultado.rowsAffected !== 1) {
+      await transaction.rollback();
+      return res.status(400).json({
+        error: 'XP insuficiente para este resgate',
+      });
+    }
+
+    await transaction.execute({
+      sql: 'INSERT INTO redemptions (reward_id, user_id) VALUES (?, ?)',
+      args: [reward.id, user.id],
+    });
+
+    await transaction.commit();
+  } catch (error) {
+    await transaction.rollback();
+    throw error;
+  } finally {
+    transaction.close();
+  }
+
   await registrarAtividade({
     householdId: user.householdId,
     recipientIds: await administradoresDaCasa(user.householdId),
@@ -62,7 +86,13 @@ rewardsRouter.post('/:id/redeem', ah(async (req, res) => {
     title: reward.title,
     amount: Number(reward.cost),
   });
-  res.json({ ok: true, xp: Number(current!.xp) - Number(reward.cost) });
+
+  const current = await get<{ xp: number }>(
+    'SELECT xp FROM users WHERE id = ? AND household_id = ?',
+    [user.id, user.householdId],
+  );
+
+  res.json({ ok: true, xp: Number(current?.xp ?? 0) });
 }));
 
 /**
