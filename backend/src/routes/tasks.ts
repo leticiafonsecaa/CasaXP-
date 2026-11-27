@@ -26,6 +26,13 @@ function findTask(id: number, householdId: number): Promise<TaskRow | undefined>
 tasksRouter.get('/', ah(async (req, res) => {
   const user = req.user!;
   const hoje = dataHojeBrasil();
+    await run(
+    `DELETE FROM tasks
+     WHERE household_id = ?
+       AND status = 'APROVADA'
+       AND (approved_on IS NULL OR approved_on < ?)`,
+    [user.householdId, hoje],
+  );
   const base = `SELECT t.id, t.title, t.description, t.xp, t.status, t.assignee_id AS assigneeId, u.name AS assigneeName
                   FROM tasks t JOIN users u ON u.id = t.assignee_id
                  WHERE t.household_id = ?
@@ -99,6 +106,43 @@ tasksRouter.post('/:id/complete', ah(async (req, res) => {
   });
   res.json({ ok: true });
 }));
+
+
+/** Apenas o administrador pode excluir tarefas que ainda não foram aprovadas. */
+tasksRouter.delete('/:id', ah(async (req, res) => {
+  const user = req.user!;
+
+  if (!canManage(user.role)) {
+    return res.status(403).json({
+      error: 'Apenas o administrador pode excluir tarefas'
+    });
+  }
+
+  const task = await findTask(Number(req.params.id), user.householdId);
+
+  if (!task) {
+    return res.status(404).json({
+      error: 'Tarefa não encontrada'
+    });
+  }
+
+  if (task.status === 'APROVADA') {
+    return res.status(400).json({
+      error: 'Não é possível excluir uma tarefa já aprovada'
+    });
+  }
+
+  await run(
+  `DELETE FROM tasks
+   WHERE id = ?
+     AND household_id = ?
+     AND status != 'APROVADA'`,
+  [task.id, user.householdId]
+);
+
+  res.json({ ok: true });
+}));
+
 
 
 /** O administrador aprova e credita o XP uma única vez. */

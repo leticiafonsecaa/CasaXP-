@@ -160,6 +160,7 @@ function AuthScreen({ onEntrar }: { onEntrar: (u: User) => void }) {
 
 type Aba = 'tarefas' | 'aprovacoes' | 'recompensas' | 'atualizacoes' | 'casa';
 
+
 function Principal({
   user,
   onAtualizarUser,
@@ -177,11 +178,12 @@ function Principal({
 
   async function verificarNovidades() {
     const r = await api<{ unread: number }>('GET', '/activities');
-    // Mostra a faixa só quando aparece algo novo, não na primeira carga.
+
     if (ultimoTotal.current !== null && r.unread > ultimoTotal.current) {
       const novas = r.unread - ultimoTotal.current;
       setAviso(novas === 1 ? 'Você tem 1 novidade' : `Você tem ${novas} novidades`);
     }
+
     ultimoTotal.current = r.unread;
     setNaoLidas(r.unread);
   }
@@ -192,10 +194,14 @@ function Principal({
     setAviso('');
   }
 
-  // Confere novidades ao abrir o app e a cada 30 segundos.
+// Confere novidades ao abrir o app e a cada 5 segundos.
   useEffect(() => {
     verificarNovidades().catch(() => {});
-    const timer = setInterval(() => verificarNovidades().catch(() => {}), 30000);
+
+    const timer = setInterval(() => {
+      verificarNovidades().catch(() => {});
+    }, 5000);
+
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -203,6 +209,7 @@ function Principal({
   // A faixa some sozinha depois de 6 segundos.
   useEffect(() => {
     if (!aviso) return;
+
     const t = setTimeout(() => setAviso(''), 6000);
     return () => clearTimeout(t);
   }, [aviso]);
@@ -211,6 +218,20 @@ function Principal({
     const r = await api<{ user: User }>('GET', '/auth/me');
     onAtualizarUser(r.user);
   }
+
+  // Atualiza o XP do adolescente a cada 5 segundos.
+  useEffect(() => {
+    if (ehAdmin) return;
+
+    atualizarXp().catch(() => {});
+
+    const intervalo = setInterval(() => {
+      atualizarXp().catch(() => {});
+    }, 5000);
+
+    return () => clearInterval(intervalo);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ehAdmin]);
 
   async function sair() {
     await api('POST', '/auth/logout').catch(() => {});
@@ -235,12 +256,17 @@ function Principal({
             <div className="papel">{roleLabel(user.role)}</div>
           </div>
         </div>
+
         {!ehAdmin && <div className="xp">⭐ {user.xp} XP</div>}
+
         <button className="sair" onClick={sair}>Sair</button>
       </header>
 
       {aviso && (
-        <button className="banner" onClick={() => { setAba('atualizacoes'); marcarLidas(); }}>
+        <button className="banner" onClick={() => {
+          setAba('atualizacoes');
+          marcarLidas();
+        }}>
           🔔 {aviso} · ver agora
         </button>
       )}
@@ -260,15 +286,26 @@ function Principal({
             className={aba === i.id ? 'ativa' : ''}
             onClick={() => setAba(i.id)}
           >
-            <span className="icone" style={{ WebkitMaskImage: `url(${i.icone})`, maskImage: `url(${i.icone})` }} />
+            <span
+              className="icone"
+              style={{
+                WebkitMaskImage: `url(${i.icone})`,
+                maskImage: `url(${i.icone})`
+              }}
+            />
             <span className="rotulo">{i.rotulo}</span>
-            {i.id === 'atualizacoes' && naoLidas > 0 && <span className="badge">{naoLidas}</span>}
+            {i.id === 'atualizacoes' && naoLidas > 0 && (
+              <span className="badge">{naoLidas}</span>
+            )}
           </button>
         ))}
       </nav>
     </div>
   );
 }
+
+
+
 
 function TarefasTab({ user, onMudou }: { user: User; onMudou: () => Promise<void> }) {
   const ehAdmin = user.role === 'RESPONSAVEL';
@@ -283,24 +320,41 @@ function TarefasTab({ user, onMudou }: { user: User; onMudou: () => Promise<void
   async function carregar() {
     const r = await api<{ tasks: Task[] }>('GET', '/tasks');
     setTarefas(r.tasks);
+
     if (ehAdmin) {
       const casa = await api<{ members: Member[] }>('GET', '/household');
       const usuarios = casa.members.filter((m) => m.role === 'ADOLESCENTE');
       setMembros(usuarios);
-      if (usuarios.length && responsavelId === '') setResponsavelId(usuarios[0].id);
+
+      if (usuarios.length && responsavelId === '') {
+        setResponsavelId(usuarios[0].id);
+      }
     }
   }
 
   useEffect(() => {
     carregar().catch((e) => setErro(e.message));
+
+    const intervalo = setInterval(() => {
+      carregar().catch((e) => setErro(e.message));
+    }, 5000);
+
+    return () => clearInterval(intervalo);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function criar(e: FormEvent) {
     e.preventDefault();
     setErro('');
+
     try {
-      await api('POST', '/tasks', { title: titulo, xp, assigneeId: responsavelId, description: descricao });
+      await api('POST', '/tasks', {
+        title: titulo,
+        xp,
+        assigneeId: responsavelId,
+        description: descricao,
+      });
+
       setTitulo('');
       setDescricao('');
       await carregar();
@@ -311,6 +365,7 @@ function TarefasTab({ user, onMudou }: { user: User; onMudou: () => Promise<void
 
   async function concluir(id: number) {
     setErro('');
+
     try {
       await api('POST', `/tasks/${id}/complete`);
       await carregar();
@@ -319,14 +374,30 @@ function TarefasTab({ user, onMudou }: { user: User; onMudou: () => Promise<void
     }
   }
 
+  async function excluir(id: number) {
+    const confirmar = window.confirm('Tem certeza que deseja excluir esta tarefa?');
+    if (!confirmar) return;
+
+    setErro('');
+
+    try {
+      await api('DELETE', `/tasks/${id}`);
+      await carregar();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : 'Erro ao excluir tarefa');
+    }
+  }
+
   return (
     <section>
       <h2>Tarefas</h2>
+
       <ResumoTarefas tarefas={tarefas} ehAdmin={ehAdmin} />
 
       {ehAdmin && (
         <form className="card" onSubmit={criar}>
           <h3>Nova tarefa</h3>
+
           {membros.length === 0 ? (
             <p>Ainda não há usuários na casa. Peça para eles entrarem com o código de convite (aba Casa).</p>
           ) : (
@@ -334,23 +405,39 @@ function TarefasTab({ user, onMudou }: { user: User; onMudou: () => Promise<void
               <label>Título
                 <input value={titulo} onChange={(e) => setTitulo(e.target.value)} required minLength={2} />
               </label>
+
               <label>Descrição (opcional)
                 <textarea
                   value={descricao}
                   onChange={(e) => setDescricao(e.target.value)}
                   maxLength={500}
                   rows={3}
-                  placeholder="Ex.: lavar a louça depois do jantar e deixar secar na pia"
+                  placeholder="Ex.: lavar a louça depois do jantar"
                 />
               </label>
+
               <label>XP
-                <input type="number" min={1} max={1000} value={xp} onChange={(e) => setXp(Number(e.target.value))} required />
+                <input
+                  type="number"
+                  min={1}
+                  max={1000}
+                  value={xp}
+                  onChange={(e) => setXp(Number(e.target.value))}
+                  required
+                />
               </label>
+
               <label>Para quem
-                <select value={responsavelId} onChange={(e) => setResponsavelId(Number(e.target.value))}>
-                  {membros.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                <select
+                  value={responsavelId}
+                  onChange={(e) => setResponsavelId(Number(e.target.value))}
+                >
+                  {membros.map((m) => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
                 </select>
               </label>
+
               <button className="primario">Criar tarefa</button>
             </>
           )}
@@ -359,27 +446,67 @@ function TarefasTab({ user, onMudou }: { user: User; onMudou: () => Promise<void
 
       {erro && <p className="erro">{erro}</p>}
 
-      {tarefas.length === 0 && <p className="vazio">Nenhuma tarefa ainda.</p>}
-      {tarefas.length > 0 && <h3 className="secao">{ehAdmin ? 'Todas as tarefas' : 'Minhas tarefas'}</h3>}
+      {tarefas.length === 0 && (
+        <p className="vazio">Nenhuma tarefa ainda.</p>
+      )}
+
+      {tarefas.length > 0 && (
+        <h3 className="secao">{ehAdmin ? 'Todas as tarefas' : 'Minhas tarefas'}</h3>
+      )}
+
       {tarefas.map((t) => (
         <div className="card tarefa" key={t.id}>
           <div className="icone-circ">
-            <span className="icone-mascara" style={{ WebkitMaskImage: `url(${iconeTarefaCard})`, maskImage: `url(${iconeTarefaCard})` }} />
+            <span
+              className="icone-mascara"
+              style={{
+                WebkitMaskImage: `url(${iconeTarefaCard})`,
+                maskImage: `url(${iconeTarefaCard})`,
+              }}
+            />
           </div>
+
           <div className="tarefa-texto">
             <strong>{t.title}</strong>
-            <div className="detalhe">{t.xp} XP{ehAdmin && ` · ${t.assigneeName}`}</div>
-            {t.description && <p className="orientacao">{t.description}</p>}
-            <span className={`chip ${t.status.toLowerCase()}`}>{statusLabel[t.status]}</span>
+            <div className="detalhe">
+              {t.xp} XP{ehAdmin && ` · ${t.assigneeName}`}
+            </div>
+
+            {t.description && (
+              <p className="orientacao">{t.description}</p>
+            )}
+
+            <span className={`chip ${t.status.toLowerCase()}`}>
+              {statusLabel[t.status]}
+            </span>
           </div>
+
+          {ehAdmin && t.status !== 'APROVADA' && (
+            <button
+              className="excluir"
+              onClick={() => excluir(t.id)}
+              title="Excluir tarefa"
+            >
+              Excluir
+            </button>
+          )}
+
           {!ehAdmin && t.status === 'PENDENTE' && (
-            <button className="check" aria-label="Marcar como feita" onClick={() => concluir(t.id)}>✓</button>
+            <button
+              className="check"
+              aria-label="Marcar como feita"
+              onClick={() => concluir(t.id)}
+            >
+              ✓
+            </button>
           )}
         </div>
       ))}
     </section>
   );
 }
+
+
 
 function ResumoTarefas({ tarefas, ehAdmin }: { tarefas: Task[]; ehAdmin: boolean }) {
   const total = tarefas.length;
@@ -430,6 +557,18 @@ function AprovacoesTab({ onMudou }: { onMudou: () => Promise<void> }) {
     }
   }
 
+  async function excluir(id: number) {
+    const confirmar = window.confirm('Deseja excluir esta tarefa?');
+    if (!confirmar) return;
+
+    try {
+      await api('DELETE', `/tasks/${id}`);
+      await carregar();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : 'Erro ao excluir tarefa');
+    }
+  }
+
   return (
     <section>
       <h2>Aprovações</h2>
@@ -439,9 +578,19 @@ function AprovacoesTab({ onMudou }: { onMudou: () => Promise<void> }) {
         <div className="card" key={t.id}>
           <strong>{t.title}</strong>
           <div className="detalhe">{t.assigneeName} · {t.xp} XP</div>
+
           <div className="linha">
-            <button className="primario pequeno" onClick={() => decidir(t.id, 'approve')}>Aprovar</button>
-            <button className="secundario pequeno" onClick={() => decidir(t.id, 'reject')}>Recusar</button>
+            <button className="primario pequeno" onClick={() => decidir(t.id, 'approve')}>
+              Aprovar
+            </button>
+
+            <button className="secundario pequeno" onClick={() => decidir(t.id, 'reject')}>
+              Recusar
+            </button>
+
+            <button className="excluir" onClick={() => excluir(t.id)}>
+              Excluir
+            </button>
           </div>
         </div>
       ))}
@@ -466,6 +615,10 @@ function RecompensasTab({ user, onMudou }: { user: User; onMudou: () => Promise<
     carregar().catch((e) => setErro(e.message));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    console.log('XP atualizado na aba:', user.xp);
+  }, [user.xp]);
 
   async function criar(e: FormEvent) {
     e.preventDefault();
